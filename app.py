@@ -150,8 +150,16 @@ def main():
                         st.write("### Quick Stats Preview")
                         df_summary = pd.DataFrame(all_stats)
                         # Reorder columns for display
-                        cols = ['language', 'total_users', 'started', '25_percent', '50_percent', '75_percent', '100_percent']
-                        st.dataframe(df_summary[cols], use_container_width=True)
+                        cols = ['language', 'total_users', 'started', 'only_1_video', '25_percent', '50_percent', '75_percent', '100_percent']
+                        df_display = df_summary[cols].copy()
+                        
+                        # Add Total Row
+                        numeric_cols = ['total_users', 'started', 'only_1_video', '25_percent', '50_percent', '75_percent', '100_percent']
+                        totals = df_display[numeric_cols].sum()
+                        total_row = pd.DataFrame([['TOTAL'] + totals.tolist()], columns=cols)
+                        df_display = pd.concat([df_display, total_row], ignore_index=True)
+                        
+                        st.dataframe(df_display, use_container_width=True)
 
             # Cleanup
             # Note: In a real production app, you'd want to handle cleanup more carefully
