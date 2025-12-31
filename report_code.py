@@ -182,6 +182,7 @@ class AISmarthProcessor:
         completion_stats = {
             'total_users': len(self.rows),
             'started': 0,
+            'only_1_video': 0,
             '25_percent': 0,
             '50_percent': 0,
             '75_percent': 0,
@@ -199,6 +200,10 @@ class AISmarthProcessor:
             # Check if user has started
             if self.has_started(row):
                 completion_stats['started'] += 1
+            
+            # Check if completed exactly one video
+            if videos_completed == 1:
+                completion_stats['only_1_video'] += 1
 
             # Update stats
             if progress_pct >= 25:
@@ -225,6 +230,7 @@ class AISmarthProcessor:
         print(f"{'=' * 80}")
         print(f"Total Users: {stats['total_users']}")
         print(f"Started: {stats['started']} users ({stats['started'] / stats['total_users'] * 100:.1f}%)")
+        print(f"Only 1 Video: {stats['only_1_video']} users ({stats['only_1_video'] / stats['total_users'] * 100:.1f}%)")
         print(f"25% Completion: {stats['25_percent']} users ({stats['25_percent'] / stats['total_users'] * 100:.1f}%)")
         print(f"50% Completion: {stats['50_percent']} users ({stats['50_percent'] / stats['total_users'] * 100:.1f}%)")
         print(f"75% Completion: {stats['75_percent']} users ({stats['75_percent'] / stats['total_users'] * 100:.1f}%)")
@@ -255,7 +261,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
     )
 
     # Headers - Changed "File Name" to "Course Language"
-    headers = ['Course Language', 'Total Users', 'Started', '25% Completion', '50% Completion', '75% Completion',
+    headers = ['Course Language', 'Total Users', 'Started', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
                '100% Completion']
     ws.append(headers)
 
@@ -272,6 +278,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
             stats['language'],
             stats['total_users'],
             stats['started'],
+            stats['only_1_video'],
             stats['25_percent'],
             stats['50_percent'],
             stats['75_percent'],
@@ -280,7 +287,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
     # Calculate totals
     total_row = ['OVERALL TOTALS']
-    for col_idx in range(2, 8):  # Columns B to G (Total Users to 100% Completion)
+    for col_idx in range(2, 9):  # Columns B to H (Total Users to 100% Completion)
         col_letter = openpyxl.utils.get_column_letter(col_idx)
         start_row = 2
         end_row = len(all_stats_sorted) + 1
@@ -304,7 +311,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
     # Adjust column widths
     ws.column_dimensions['A'].width = 20
-    for col in ['B', 'C', 'D', 'E', 'F', 'G']:
+    for col in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
         ws.column_dimensions[col].width = 18
 
     # Save workbook
@@ -391,7 +398,8 @@ def main():
     """Main function"""
     # Windows path: C:\Users\<YourUsername>\Downloads\PyCharm - AI Samarth
     # Path.home() automatically detects the user's home directory on Windows
-    source_path = Path.home() / "Downloads" / "PyCharm - AI Samarth"
+    project_root = Path(__file__).parent
+    source_path = project_root / "data_files"
 
     print("=" * 100)
     print("AI SAMARTH CSV PROCESSOR WITH COMPLETION TRACKING")
@@ -426,11 +434,14 @@ def main():
 
     print(f"\n{validation_msg}")
 
-    # Create output folder in the same location
-    output_folder = source_path / "AI_Samarth_Processed"
+    # Create output folders
+    output_folder = project_root / "output"
+    csv_output_folder = output_folder / "Processed_CSVs"
     output_folder.mkdir(exist_ok=True)
+    csv_output_folder.mkdir(exist_ok=True)
 
     print(f"\n✓ Output folder: {output_folder}")
+    print(f"✓ Processed CSVs will be in: {csv_output_folder}")
 
     # Process each file
     print("\nPROCESSING FILES")
@@ -443,7 +454,7 @@ def main():
 
         # Generate output filename
         base_name = os.path.splitext(os.path.basename(file))[0]
-        output_csv = output_folder / f"{base_name}_processed.csv"
+        output_csv = csv_output_folder / f"{base_name}_processed.csv"
 
         print(f"\nProcessing: {os.path.basename(file)}")
 
@@ -476,6 +487,7 @@ def main():
 
         total_users = sum(s['total_users'] for s in all_stats)
         total_started = sum(s['started'] for s in all_stats)
+        total_only_1 = sum(s['only_1_video'] for s in all_stats)
         total_25 = sum(s['25_percent'] for s in all_stats)
         total_50 = sum(s['50_percent'] for s in all_stats)
         total_75 = sum(s['75_percent'] for s in all_stats)
@@ -483,6 +495,7 @@ def main():
 
         print(f"\nTotal Users Across All Files: {total_users}")
         print(f"Started: {total_started} users ({total_started / total_users * 100:.1f}%)")
+        print(f"Only 1 Video: {total_only_1} users ({total_only_1 / total_users * 100:.1f}%)")
         print(f"25% Completion: {total_25} users ({total_25 / total_users * 100:.1f}%)")
         print(f"50% Completion: {total_50} users ({total_50 / total_users * 100:.1f}%)")
         print(f"75% Completion: {total_75} users ({total_75 / total_users * 100:.1f}%)")
