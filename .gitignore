@@ -1,0 +1,11 @@
+# Streamlit/Python
+**/temp_uploads/
+**/temp_output/
+**/data_files/
+**/output/
+**/__pycache__/
+.DS_Store
+.idea/
+.vscode/
+venv/
+*.pyc
