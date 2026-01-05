@@ -160,6 +160,58 @@ def main():
                         df_display = pd.concat([df_display, total_row], ignore_index=True)
                         
                         st.dataframe(df_display, use_container_width=True)
+                        
+                        # Month-wise "Only 1 Video" Analysis
+                        st.write("### Month-wise 'Only 1 Video' Analysis")
+                        
+                        # Create tabs for cumulative and monthly views
+                        tab1, tab2 = st.tabs(["📈 Cumulative (Start to Month End)", "📅 Monthly (Month Only)"])
+                        
+                        with tab1:
+                            st.write("**Cumulative Data:** Users who completed exactly 1 video from program start to end of each month")
+                            df_cumulative = pd.DataFrame(all_stats)
+                            cum_cols = ['language', 'only_1_video_cumulative_oct', 'only_1_video_cumulative_nov', 'only_1_video_cumulative_dec']
+                            
+                            # Check if columns exist (for backward compatibility)
+                            available_cum_cols = [col for col in cum_cols if col in df_cumulative.columns]
+                            if available_cum_cols:
+                                df_cum_display = df_cumulative[available_cum_cols].copy()
+                                
+                                # Rename columns for better display
+                                df_cum_display.columns = ['Course Language', 'Start to Oct End', 'Start to Nov End', 'Start to Dec End']
+                                
+                                # Add Total Row
+                                numeric_cum_cols = ['Start to Oct End', 'Start to Nov End', 'Start to Dec End']
+                                cum_totals = df_cum_display[numeric_cum_cols].sum()
+                                cum_total_row = pd.DataFrame([['TOTAL'] + cum_totals.tolist()], columns=['Course Language'] + numeric_cum_cols)
+                                df_cum_display = pd.concat([df_cum_display, cum_total_row], ignore_index=True)
+                                
+                                st.dataframe(df_cum_display, use_container_width=True)
+                            else:
+                                st.info("Month-wise cumulative data not available in this dataset.")
+                        
+                        with tab2:
+                            st.write("**Monthly Data:** Users who completed exactly 1 video and started in that specific month")
+                            df_monthly = pd.DataFrame(all_stats)
+                            mon_cols = ['language', 'only_1_video_monthly_oct', 'only_1_video_monthly_nov', 'only_1_video_monthly_dec']
+                            
+                            # Check if columns exist (for backward compatibility)
+                            available_mon_cols = [col for col in mon_cols if col in df_monthly.columns]
+                            if available_mon_cols:
+                                df_mon_display = df_monthly[available_mon_cols].copy()
+                                
+                                # Rename columns for better display
+                                df_mon_display.columns = ['Course Language', 'October Only', 'November Only', 'December Only']
+                                
+                                # Add Total Row
+                                numeric_mon_cols = ['October Only', 'November Only', 'December Only']
+                                mon_totals = df_mon_display[numeric_mon_cols].sum()
+                                mon_total_row = pd.DataFrame([['TOTAL'] + mon_totals.tolist()], columns=['Course Language'] + numeric_mon_cols)
+                                df_mon_display = pd.concat([df_mon_display, mon_total_row], ignore_index=True)
+                                
+                                st.dataframe(df_mon_display, use_container_width=True)
+                            else:
+                                st.info("Month-wise monthly data not available in this dataset.")
 
             # Cleanup
             # Note: In a real production app, you'd want to handle cleanup more carefully

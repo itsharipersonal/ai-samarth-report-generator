@@ -9,9 +9,72 @@ import csv
 import re
 import os
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
+from datetime import datetime
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+
+def parse_start_date(date_str: str) -> Optional[Tuple[int, int]]:
+    """
+    Parse Start Date string and return (month, year) tuple.
+    Handles formats: DD/MM/YY, YYYY/MM/DD, and "Not Started"
+    
+    Returns:
+        Tuple of (month, year) or None if invalid/not started
+    """
+    if not date_str or not date_str.strip():
+        return None
+    
+    date_str = date_str.strip()
+    
+    # Handle "Not Started" case
+    if date_str.lower() in ['not started', 'not started', '']:
+        return None
+    
+    # Try DD/MM/YY format (e.g., "23/10/25" or "06/11/25")
+    try:
+        parts = date_str.split('/')
+        if len(parts) == 3:
+            # Check if first part is > 31 (likely YYYY/MM/DD format)
+            if len(parts[0]) == 4:
+                # YYYY/MM/DD format
+                year = int(parts[0])
+                month = int(parts[1])
+                day = int(parts[2])
+            else:
+                # DD/MM/YY format
+                day = int(parts[0])
+                month = int(parts[1])
+                year = int(parts[2])
+                # Convert 2-digit year to 4-digit (assuming 20xx for years < 50, 19xx otherwise)
+                if year < 50:
+                    year += 2000
+                else:
+                    year += 1900
+            
+            # Validate month
+            if 1 <= month <= 12:
+                return (month, year)
+    except (ValueError, IndexError):
+        pass
+    
+    # Try parsing with datetime
+    for fmt in ['%d/%m/%y', '%Y/%m/%d', '%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y']:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            return (dt.month, dt.year)
+        except ValueError:
+            continue
+    
+    return None
+
+
+def get_month_name(month: int) -> str:
+    """Get month name from month number"""
+    months = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December']
+    return months[month] if 1 <= month <= 12 else 'Unknown'
 
 
 class AISmarthProcessor:
@@ -22,6 +85,7 @@ class AISmarthProcessor:
     COL_BR = 69  # End column (0-indexed)
     COL_AP = 41  # Midpoint Quiz
     COL_BU = 72  # Endpoint Quiz
+    COL_START_DATE = 12  # Start Date column (0-indexed)
 
     EXPECTED_VIDEO_CHAPTERS = 35
 
@@ -186,9 +250,19 @@ class AISmarthProcessor:
             '25_percent': 0,
             '50_percent': 0,
             '75_percent': 0,
-            '100_percent': 0
+            '100_percent': 0,
+            # Month-wise "Only 1 Video" metrics
+            'only_1_video_cumulative_oct': 0,
+            'only_1_video_cumulative_nov': 0,
+            'only_1_video_cumulative_dec': 0,
+            'only_1_video_monthly_oct': 0,
+            'only_1_video_monthly_nov': 0,
+            'only_1_video_monthly_dec': 0
         }
 
+        # Track users with their start dates and completion status
+        user_data = []
+        
         for row in self.rows:
             videos_completed, quizzes_completed = self.count_completions(row)
             progress_pct = self.calculate_progress_percentage(videos_completed, quizzes_completed)
@@ -196,6 +270,17 @@ class AISmarthProcessor:
             # Add completion columns
             new_row = row + [str(videos_completed), str(quizzes_completed), str(progress_pct)]
             processed_rows.append(new_row)
+
+            # Get Start Date
+            start_date_str = row[self.COL_START_DATE] if self.COL_START_DATE < len(row) else ""
+            date_info = parse_start_date(start_date_str)
+            
+            # Store user data for month-wise analysis
+            user_data.append({
+                'videos_completed': videos_completed,
+                'date_info': date_info,
+                'has_started': self.has_started(row)
+            })
 
             # Check if user has started
             if self.has_started(row):
@@ -214,6 +299,36 @@ class AISmarthProcessor:
                 completion_stats['75_percent'] += 1
             if progress_pct == 100:
                 completion_stats['100_percent'] += 1
+
+        # Calculate month-wise "Only 1 Video" metrics
+        # Define month end dates (assuming 2025)
+        oct_end = (10, 2025)  # October 2025
+        nov_end = (11, 2025)  # November 2025
+        dec_end = (12, 2025)  # December 2025
+        
+        for user in user_data:
+            if user['videos_completed'] == 1 and user['date_info']:
+                month, year = user['date_info']
+                
+                # Cumulative counts: users from start to end of each month
+                # Compare dates: (year, month) <= (end_year, end_month)
+                # This includes all users who started on or before the end of that month
+                if (year < oct_end[1]) or (year == oct_end[1] and month <= oct_end[0]):
+                    completion_stats['only_1_video_cumulative_oct'] += 1
+                
+                if (year < nov_end[1]) or (year == nov_end[1] and month <= nov_end[0]):
+                    completion_stats['only_1_video_cumulative_nov'] += 1
+                
+                if (year < dec_end[1]) or (year == dec_end[1] and month <= dec_end[0]):
+                    completion_stats['only_1_video_cumulative_dec'] += 1
+                
+                # Monthly counts: users who started in that specific month only
+                if month == 10 and year == 2025:
+                    completion_stats['only_1_video_monthly_oct'] += 1
+                elif month == 11 and year == 2025:
+                    completion_stats['only_1_video_monthly_nov'] += 1
+                elif month == 12 and year == 2025:
+                    completion_stats['only_1_video_monthly_dec'] += 1
 
         # Write to new CSV
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
@@ -314,9 +429,130 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
     for col in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
         ws.column_dimensions[col].width = 18
 
+    # Add month-wise analysis sheets
+    _add_monthwise_sheets(wb, all_stats_sorted)
+    
     # Save workbook
     wb.save(output_path)
     print(f"\n✓ Summary Excel created: {output_path}")
+
+
+def _add_monthwise_sheets(wb, all_stats_sorted):
+    """Add month-wise 'Only 1 Video' analysis sheets to workbook"""
+    
+    # Define styles (same as main sheet)
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=12)
+    total_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+    total_font = Font(bold=True, size=11)
+    border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Sheet 1: Cumulative "Only 1 Video" (Start to Month End)
+    ws_cumulative = wb.create_sheet("Only 1 Video - Cumulative")
+    
+    headers_cumulative = ['Course Language', 'Start to Oct End', 'Start to Nov End', 'Start to Dec End']
+    ws_cumulative.append(headers_cumulative)
+    
+    # Style header row
+    for cell in ws_cumulative[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+        cell.border = border
+    
+    # Add data rows
+    for stats in all_stats_sorted:
+        ws_cumulative.append([
+            stats['language'],
+            stats.get('only_1_video_cumulative_oct', 0),
+            stats.get('only_1_video_cumulative_nov', 0),
+            stats.get('only_1_video_cumulative_dec', 0)
+        ])
+    
+    # Add totals row
+    total_row_cumulative = ['OVERALL TOTALS']
+    for col_idx in range(2, 5):  # Columns B to D
+        col_letter = openpyxl.utils.get_column_letter(col_idx)
+        start_row = 2
+        end_row = len(all_stats_sorted) + 1
+        total_row_cumulative.append(f"=SUM({col_letter}{start_row}:{col_letter}{end_row})")
+    
+    ws_cumulative.append(total_row_cumulative)
+    total_row_idx_cumulative = len(all_stats_sorted) + 2
+    
+    # Style total row
+    for cell in ws_cumulative[total_row_idx_cumulative]:
+        cell.fill = total_fill
+        cell.font = total_font
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+        cell.border = border
+    
+    # Style data rows
+    for row_idx in range(2, total_row_idx_cumulative):
+        for cell in ws_cumulative[row_idx]:
+            cell.border = border
+            cell.alignment = Alignment(horizontal='left', vertical='center')
+    
+    # Adjust column widths
+    ws_cumulative.column_dimensions['A'].width = 20
+    for col in ['B', 'C', 'D']:
+        ws_cumulative.column_dimensions[col].width = 18
+    
+    # Sheet 2: Monthly "Only 1 Video" (Month Only)
+    ws_monthly = wb.create_sheet("Only 1 Video - Monthly")
+    
+    headers_monthly = ['Course Language', 'October Only', 'November Only', 'December Only']
+    ws_monthly.append(headers_monthly)
+    
+    # Style header row
+    for cell in ws_monthly[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+        cell.border = border
+    
+    # Add data rows
+    for stats in all_stats_sorted:
+        ws_monthly.append([
+            stats['language'],
+            stats.get('only_1_video_monthly_oct', 0),
+            stats.get('only_1_video_monthly_nov', 0),
+            stats.get('only_1_video_monthly_dec', 0)
+        ])
+    
+    # Add totals row
+    total_row_monthly = ['OVERALL TOTALS']
+    for col_idx in range(2, 5):  # Columns B to D
+        col_letter = openpyxl.utils.get_column_letter(col_idx)
+        start_row = 2
+        end_row = len(all_stats_sorted) + 1
+        total_row_monthly.append(f"=SUM({col_letter}{start_row}:{col_letter}{end_row})")
+    
+    ws_monthly.append(total_row_monthly)
+    total_row_idx_monthly = len(all_stats_sorted) + 2
+    
+    # Style total row
+    for cell in ws_monthly[total_row_idx_monthly]:
+        cell.fill = total_fill
+        cell.font = total_font
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+        cell.border = border
+    
+    # Style data rows
+    for row_idx in range(2, total_row_idx_monthly):
+        for cell in ws_monthly[row_idx]:
+            cell.border = border
+            cell.alignment = Alignment(horizontal='left', vertical='center')
+    
+    # Adjust column widths
+    ws_monthly.column_dimensions['A'].width = 20
+    for col in ['B', 'C', 'D']:
+        ws_monthly.column_dimensions[col].width = 18
 
 
 def find_aisamarth_files(source_path: Path) -> List[str]:
