@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import os
+import csv
 import shutil
 from pathlib import Path
 import zipfile
 from io import BytesIO
-from report_code import AISmarthProcessor, create_summary_excel, validate_language_files
+from report_code import AISmarthProcessor, create_summary_excel, validate_language_files, parse_start_date
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -94,7 +95,43 @@ def main():
                 st.error(validation_msg)
             else:
                 st.success("✅ All required files present and valid!")
+
+                # Scan for date range
+                min_date = None
+                max_date = None
+                all_dates = []
+
+                # Quick scan for dates
+                for fp in file_paths:
+                    try:
+                        with open(fp, 'r', encoding='utf-8') as f:
+                            reader = csv.reader(f)
+                            next(reader) # Skip headers
+                            # Start Date is column 12 (0-indexed)
+                            for row in reader:
+                                if len(row) > 12:
+                                    d = parse_start_date(row[12])
+                                    if d:
+                                        all_dates.append(d)
+                    except Exception:
+                        pass
                 
+                if all_dates:
+                    min_date = min(all_dates)
+                    max_date = max(all_dates)
+
+                st.subheader("2. Filter Settings (Optional)")
+                if min_date and max_date:
+                    st.info(f"📅 Found data from **{min_date.strftime('%d %b %Y')}** to **{max_date.strftime('%d %b %Y')}**")
+                
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    default_start = min_date if min_date else None
+                    start_date = st.date_input("Start Date", value=default_start, min_value=min_date, max_value=max_date)
+                with col_d2:
+                    default_end = max_date if max_date else None
+                    end_date = st.date_input("End Date", value=default_end, min_value=min_date, max_value=max_date)
+
                 if st.button("🚀 Process Files"):
                     with st.spinner("Processing data..."):
                         all_stats = []
@@ -105,7 +142,7 @@ def main():
                             base_name = os.path.splitext(os.path.basename(file_path))[0]
                             output_csv_path = csv_output_dir / f"{base_name}_processed.csv"
                             
-                            stats = processor.process_and_add_columns(str(output_csv_path))
+                            stats = processor.process_and_add_columns(str(output_csv_path), start_date, end_date)
                             
                             if stats:
                                 stats['language'] = processor.extract_language()
@@ -148,6 +185,8 @@ def main():
 
                         # Display Summary Table for quick view
                         st.write("### Quick Stats Preview")
+                        if start_date and end_date:
+                            st.caption(f"📅 Data from **{start_date.strftime('%d %b %Y')}** to **{end_date.strftime('%d %b %Y')}**")
                         df_summary = pd.DataFrame(all_stats)
                         # Reorder columns for display
                         cols = ['language', 'total_users', 'started', 'only_1_video', '25_percent', '50_percent', '75_percent', '100_percent']

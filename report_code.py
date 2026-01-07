@@ -15,13 +15,13 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 
-def parse_start_date(date_str: str) -> Optional[Tuple[int, int]]:
+def parse_start_date(date_str: str) -> Optional[datetime.date]:
     """
-    Parse Start Date string and return (month, year) tuple.
+    Parse Start Date string and return datetime.date object.
     Handles formats: DD/MM/YY, YYYY/MM/DD, and "Not Started"
     
     Returns:
-        Tuple of (month, year) or None if invalid/not started
+        datetime.date object or None if invalid/not started
     """
     if not date_str or not date_str.strip():
         return None
@@ -54,16 +54,16 @@ def parse_start_date(date_str: str) -> Optional[Tuple[int, int]]:
                     year += 1900
             
             # Validate month
-            if 1 <= month <= 12:
-                return (month, year)
+            if 1 <= month <= 12 and 1 <= day <= 31:
+                return datetime(year, month, day).date()
     except (ValueError, IndexError):
         pass
     
     # Try parsing with datetime
     for fmt in ['%d/%m/%y', '%Y/%m/%d', '%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y']:
         try:
-            dt = datetime.strptime(date_str, fmt)
-            return (dt.month, dt.year)
+            dt = datetime.strptime(date_str, fmt).date()
+            return dt
         except ValueError:
             continue
     
@@ -233,7 +233,7 @@ class AISmarthProcessor:
 
         return True
 
-    def process_and_add_columns(self, output_path: str) -> Dict:
+    def process_and_add_columns(self, output_path: str, start_date_filter: Optional[datetime.date] = None, end_date_filter: Optional[datetime.date] = None) -> Dict:
         """Process CSV, add completion columns, and save"""
         if not self.validate_all():
             return None
@@ -244,7 +244,7 @@ class AISmarthProcessor:
         # Process each row and add completion data
         processed_rows = []
         completion_stats = {
-            'total_users': len(self.rows),
+            'total_users': 0, # Will be set after filtering
             'started': 0,
             'only_1_video': 0,
             '25_percent': 0,
@@ -262,8 +262,24 @@ class AISmarthProcessor:
 
         # Track users with their start dates and completion status
         user_data = []
+        filtered_rows_count = 0
         
         for row in self.rows:
+            # Get Start Date for filtering
+            start_date_str = row[self.COL_START_DATE] if self.COL_START_DATE < len(row) else ""
+            date_obj = parse_start_date(start_date_str)
+            
+            # Apply Date Filter if configured
+            if start_date_filter and end_date_filter:
+                if not date_obj:
+                    # Skip rows with no start date if filtering is active
+                    continue 
+                if not (start_date_filter <= date_obj <= end_date_filter):
+                    continue # Skip rows outside range
+            
+            # Count Row as valid
+            filtered_rows_count += 1
+            
             videos_completed, quizzes_completed = self.count_completions(row)
             progress_pct = self.calculate_progress_percentage(videos_completed, quizzes_completed)
 
@@ -271,14 +287,10 @@ class AISmarthProcessor:
             new_row = row + [str(videos_completed), str(quizzes_completed), str(progress_pct)]
             processed_rows.append(new_row)
 
-            # Get Start Date
-            start_date_str = row[self.COL_START_DATE] if self.COL_START_DATE < len(row) else ""
-            date_info = parse_start_date(start_date_str)
-            
             # Store user data for month-wise analysis
             user_data.append({
                 'videos_completed': videos_completed,
-                'date_info': date_info,
+                'date_info': date_obj, # Now storing date object
                 'has_started': self.has_started(row)
             })
 
@@ -300,6 +312,9 @@ class AISmarthProcessor:
             if progress_pct == 100:
                 completion_stats['100_percent'] += 1
 
+        # Set total users to filtered count
+        completion_stats['total_users'] = filtered_rows_count
+
         # Calculate month-wise "Only 1 Video" metrics
         # Define month end dates (assuming 2025)
         oct_end = (10, 2025)  # October 2025
@@ -308,7 +323,8 @@ class AISmarthProcessor:
         
         for user in user_data:
             if user['videos_completed'] == 1 and user['date_info']:
-                month, year = user['date_info']
+                month = user['date_info'].month
+                year = user['date_info'].year
                 
                 # Cumulative counts: users from start to end of each month
                 # Compare dates: (year, month) <= (end_year, end_month)
