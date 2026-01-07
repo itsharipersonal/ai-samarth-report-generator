@@ -251,13 +251,13 @@ class AISmarthProcessor:
             '50_percent': 0,
             '75_percent': 0,
             '100_percent': 0,
-            # Month-wise "Only 1 Video" metrics
-            'only_1_video_cumulative_oct': 0,
-            'only_1_video_cumulative_nov': 0,
-            'only_1_video_cumulative_dec': 0,
-            'only_1_video_monthly_oct': 0,
-            'only_1_video_monthly_nov': 0,
-            'only_1_video_monthly_dec': 0
+            # Month-wise "At Least 1 Video" metrics
+            'at_least_1_video_cumulative_oct': 0,
+            'at_least_1_video_cumulative_nov': 0,
+            'at_least_1_video_cumulative_dec': 0,
+            'at_least_1_video_monthly_oct': 0,
+            'at_least_1_video_monthly_nov': 0,
+            'at_least_1_video_monthly_dec': 0
         }
 
         # Track users with their start dates and completion status
@@ -315,14 +315,14 @@ class AISmarthProcessor:
         # Set total users to filtered count
         completion_stats['total_users'] = filtered_rows_count
 
-        # Calculate month-wise "Only 1 Video" metrics
+        # Calculate month-wise "At Least 1 Video" metrics
         # Define month end dates (assuming 2025)
         oct_end = (10, 2025)  # October 2025
         nov_end = (11, 2025)  # November 2025
         dec_end = (12, 2025)  # December 2025
         
         for user in user_data:
-            if user['videos_completed'] == 1 and user['date_info']:
+            if user['videos_completed'] >= 1 and user['date_info']:
                 month = user['date_info'].month
                 year = user['date_info'].year
                 
@@ -330,21 +330,21 @@ class AISmarthProcessor:
                 # Compare dates: (year, month) <= (end_year, end_month)
                 # This includes all users who started on or before the end of that month
                 if (year < oct_end[1]) or (year == oct_end[1] and month <= oct_end[0]):
-                    completion_stats['only_1_video_cumulative_oct'] += 1
+                    completion_stats['at_least_1_video_cumulative_oct'] += 1
                 
                 if (year < nov_end[1]) or (year == nov_end[1] and month <= nov_end[0]):
-                    completion_stats['only_1_video_cumulative_nov'] += 1
+                    completion_stats['at_least_1_video_cumulative_nov'] += 1
                 
                 if (year < dec_end[1]) or (year == dec_end[1] and month <= dec_end[0]):
-                    completion_stats['only_1_video_cumulative_dec'] += 1
+                    completion_stats['at_least_1_video_cumulative_dec'] += 1
                 
                 # Monthly counts: users who started in that specific month only
                 if month == 10 and year == 2025:
-                    completion_stats['only_1_video_monthly_oct'] += 1
+                    completion_stats['at_least_1_video_monthly_oct'] += 1
                 elif month == 11 and year == 2025:
-                    completion_stats['only_1_video_monthly_nov'] += 1
+                    completion_stats['at_least_1_video_monthly_nov'] += 1
                 elif month == 12 and year == 2025:
-                    completion_stats['only_1_video_monthly_dec'] += 1
+                    completion_stats['at_least_1_video_monthly_dec'] += 1
 
         # Write to new CSV
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
@@ -454,7 +454,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
 
 def _add_monthwise_sheets(wb, all_stats_sorted):
-    """Add month-wise 'Only 1 Video' analysis sheets to workbook"""
+    """Add month-wise 'At Least 1 Video' analysis sheets to workbook"""
     
     # Define styles (same as main sheet)
     header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
@@ -468,10 +468,10 @@ def _add_monthwise_sheets(wb, all_stats_sorted):
         bottom=Side(style='thin')
     )
     
-    # Sheet 1: Cumulative "Only 1 Video" (Start to Month End)
-    ws_cumulative = wb.create_sheet("Only 1 Video - Cumulative")
+    # Sheet 1: Cumulative "At Least 1 Video" (Start to Month End)
+    ws_cumulative = wb.create_sheet("At Least 1 Video - Cumulative")
     
-    headers_cumulative = ['Course Language', 'Start to Oct End', 'Start to Nov End', 'Start to Dec End']
+    headers_cumulative = ['Course Language', 'Up to Oct End', 'Up to Nov End', 'Up to Dec End']
     ws_cumulative.append(headers_cumulative)
     
     # Style header row
@@ -485,9 +485,9 @@ def _add_monthwise_sheets(wb, all_stats_sorted):
     for stats in all_stats_sorted:
         ws_cumulative.append([
             stats['language'],
-            stats.get('only_1_video_cumulative_oct', 0),
-            stats.get('only_1_video_cumulative_nov', 0),
-            stats.get('only_1_video_cumulative_dec', 0)
+            stats.get('at_least_1_video_cumulative_oct', 0),
+            stats.get('at_least_1_video_cumulative_nov', 0),
+            stats.get('at_least_1_video_cumulative_dec', 0)
         ])
     
     # Add totals row
@@ -519,8 +519,8 @@ def _add_monthwise_sheets(wb, all_stats_sorted):
     for col in ['B', 'C', 'D']:
         ws_cumulative.column_dimensions[col].width = 18
     
-    # Sheet 2: Monthly "Only 1 Video" (Month Only)
-    ws_monthly = wb.create_sheet("Only 1 Video - Monthly")
+    # Sheet 2: Monthly "At Least 1 Video" (Month Only)
+    ws_monthly = wb.create_sheet("At Least 1 Video - Monthly")
     
     headers_monthly = ['Course Language', 'October Only', 'November Only', 'December Only']
     ws_monthly.append(headers_monthly)
@@ -536,9 +536,9 @@ def _add_monthwise_sheets(wb, all_stats_sorted):
     for stats in all_stats_sorted:
         ws_monthly.append([
             stats['language'],
-            stats.get('only_1_video_monthly_oct', 0),
-            stats.get('only_1_video_monthly_nov', 0),
-            stats.get('only_1_video_monthly_dec', 0)
+            stats.get('at_least_1_video_monthly_oct', 0),
+            stats.get('at_least_1_video_monthly_nov', 0),
+            stats.get('at_least_1_video_monthly_dec', 0)
         ])
     
     # Add totals row
