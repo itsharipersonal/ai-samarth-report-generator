@@ -189,13 +189,25 @@ def main():
                             st.caption(f"📅 Data from **{start_date.strftime('%d %b %Y')}** to **{end_date.strftime('%d %b %Y')}**")
                         df_summary = pd.DataFrame(all_stats)
                         # Reorder columns for display
-                        cols = ['language', 'total_users', 'started', 'only_1_video', '25_percent', '50_percent', '75_percent', '100_percent']
+                        cols = ['language', 'total_users', 'started', '25_percent', '50_percent', '75_percent', '100_percent']
                         df_display = df_summary[cols].copy()
                         
+                        # Rename columns for better readability
+                        column_rename_map = {
+                            'language': 'Course Language',
+                            'total_users': 'Total Users',
+                            'started': 'Total Users Started',
+                            '25_percent': '25% Complete',
+                            '50_percent': '50% Complete',
+                            '75_percent': '75% Complete',
+                            '100_percent': '100% Complete'
+                        }
+                        df_display = df_display.rename(columns=column_rename_map)
+                        
                         # Add Total Row
-                        numeric_cols = ['total_users', 'started', 'only_1_video', '25_percent', '50_percent', '75_percent', '100_percent']
+                        numeric_cols = ['Total Users', 'Total Users Started', '25% Complete', '50% Complete', '75% Complete', '100% Complete']
                         totals = df_display[numeric_cols].sum()
-                        total_row = pd.DataFrame([['TOTAL'] + totals.tolist()], columns=cols)
+                        total_row = pd.DataFrame([['TOTAL'] + totals.tolist()], columns=['Course Language'] + numeric_cols)
                         df_display = pd.concat([df_display, total_row], ignore_index=True)
                         
                         st.dataframe(df_display, use_container_width=True)
@@ -203,26 +215,73 @@ def main():
                         # Month-wise "At Least 1 Video" Analysis
                         st.write("### Month-wise 'At Least 1 Video' Analysis")
                         
+                        # Dynamically detect all month columns with year-month format
+                        import re
+                        month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                                      'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+                        month_display_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                                              'July', 'August', 'September', 'October', 'November', 'December']
+                        
+                        df_all = pd.DataFrame(all_stats)
+                        
+                        # Find all cumulative month columns (format: at_least_1_video_cumulative_YYYY_month)
+                        cum_month_cols = []
+                        cum_display_info = []  # List of (col_name, year, month_num, display_name)
+                        
+                        for col in df_all.columns:
+                            match = re.match(r'at_least_1_video_cumulative_(\d+)_(\w+)', col)
+                            if match:
+                                year = int(match.group(1))
+                                month_abbr = match.group(2)
+                                if month_abbr in month_names:
+                                    month_idx = month_names.index(month_abbr)
+                                    month_num = month_idx + 1
+                                    display_name = f'Up to {month_display_names[month_idx]} {year} End'
+                                    cum_month_cols.append(col)
+                                    cum_display_info.append((col, year, month_num, display_name))
+                        
+                        # Sort by year, then by month
+                        cum_display_info.sort(key=lambda x: (x[1], x[2]))
+                        cum_month_cols = [info[0] for info in cum_display_info]
+                        cum_display_names = [info[3] for info in cum_display_info]
+                        
+                        # Find all monthly month columns (format: at_least_1_video_monthly_YYYY_month)
+                        mon_month_cols = []
+                        mon_display_info = []  # List of (col_name, year, month_num, display_name)
+                        
+                        for col in df_all.columns:
+                            match = re.match(r'at_least_1_video_monthly_(\d+)_(\w+)', col)
+                            if match:
+                                year = int(match.group(1))
+                                month_abbr = match.group(2)
+                                if month_abbr in month_names:
+                                    month_idx = month_names.index(month_abbr)
+                                    month_num = month_idx + 1
+                                    display_name = f'{month_display_names[month_idx]} {year} Only'
+                                    mon_month_cols.append(col)
+                                    mon_display_info.append((col, year, month_num, display_name))
+                        
+                        # Sort by year, then by month
+                        mon_display_info.sort(key=lambda x: (x[1], x[2]))
+                        mon_month_cols = [info[0] for info in mon_display_info]
+                        mon_display_names = [info[3] for info in mon_display_info]
+                        
                         # Create tabs for cumulative and monthly views
                         tab1, tab2 = st.tabs(["📈 Cumulative (Start to Month End)", "📅 Monthly (Month Only)"])
                         
                         with tab1:
                             st.write("**Cumulative Data:** Users who completed **at least 1 video** from program start to end of each month")
-                            df_cumulative = pd.DataFrame(all_stats)
-                            cum_cols = ['language', 'at_least_1_video_cumulative_oct', 'at_least_1_video_cumulative_nov', 'at_least_1_video_cumulative_dec']
                             
-                            # Check if columns exist (for backward compatibility)
-                            available_cum_cols = [col for col in cum_cols if col in df_cumulative.columns]
-                            if available_cum_cols:
-                                df_cum_display = df_cumulative[available_cum_cols].copy()
+                            if cum_month_cols:
+                                cum_cols = ['language'] + cum_month_cols
+                                df_cum_display = df_all[cum_cols].copy()
                                 
                                 # Rename columns for better display
-                                df_cum_display.columns = ['Course Language', 'Up to Oct End', 'Up to Nov End', 'Up to Dec End']
+                                df_cum_display.columns = ['Course Language'] + cum_display_names
                                 
                                 # Add Total Row
-                                numeric_cum_cols = ['Up to Oct End', 'Up to Nov End', 'Up to Dec End']
-                                cum_totals = df_cum_display[numeric_cum_cols].sum()
-                                cum_total_row = pd.DataFrame([['TOTAL'] + cum_totals.tolist()], columns=['Course Language'] + numeric_cum_cols)
+                                cum_totals = df_cum_display[cum_display_names].sum()
+                                cum_total_row = pd.DataFrame([['TOTAL'] + cum_totals.tolist()], columns=['Course Language'] + cum_display_names)
                                 df_cum_display = pd.concat([df_cum_display, cum_total_row], ignore_index=True)
                                 
                                 st.dataframe(df_cum_display, use_container_width=True)
@@ -231,21 +290,17 @@ def main():
                         
                         with tab2:
                             st.write("**Monthly Data:** Users who completed **at least 1 video** and started in that specific month")
-                            df_monthly = pd.DataFrame(all_stats)
-                            mon_cols = ['language', 'at_least_1_video_monthly_oct', 'at_least_1_video_monthly_nov', 'at_least_1_video_monthly_dec']
                             
-                            # Check if columns exist (for backward compatibility)
-                            available_mon_cols = [col for col in mon_cols if col in df_monthly.columns]
-                            if available_mon_cols:
-                                df_mon_display = df_monthly[available_mon_cols].copy()
+                            if mon_month_cols:
+                                mon_cols = ['language'] + mon_month_cols
+                                df_mon_display = df_all[mon_cols].copy()
                                 
                                 # Rename columns for better display
-                                df_mon_display.columns = ['Course Language', 'October Only', 'November Only', 'December Only']
+                                df_mon_display.columns = ['Course Language'] + mon_display_names
                                 
                                 # Add Total Row
-                                numeric_mon_cols = ['October Only', 'November Only', 'December Only']
-                                mon_totals = df_mon_display[numeric_mon_cols].sum()
-                                mon_total_row = pd.DataFrame([['TOTAL'] + mon_totals.tolist()], columns=['Course Language'] + numeric_mon_cols)
+                                mon_totals = df_mon_display[mon_display_names].sum()
+                                mon_total_row = pd.DataFrame([['TOTAL'] + mon_totals.tolist()], columns=['Course Language'] + mon_display_names)
                                 df_mon_display = pd.concat([df_mon_display, mon_total_row], ignore_index=True)
                                 
                                 st.dataframe(df_mon_display, use_container_width=True)

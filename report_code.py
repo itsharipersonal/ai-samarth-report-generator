@@ -250,26 +250,22 @@ class AISmarthProcessor:
             '25_percent': 0,
             '50_percent': 0,
             '75_percent': 0,
-            '100_percent': 0,
-            # Month-wise "At Least 1 Video" metrics
-            'at_least_1_video_cumulative_oct': 0,
-            'at_least_1_video_cumulative_nov': 0,
-            'at_least_1_video_cumulative_dec': 0,
-            'at_least_1_video_monthly_oct': 0,
-            'at_least_1_video_monthly_nov': 0,
-            'at_least_1_video_monthly_dec': 0
+            '100_percent': 0
         }
 
         # Track users with their start dates and completion status
         user_data = []
         filtered_rows_count = 0
         
+        # Total enrolled users = all rows in CSV (regardless of date filter)
+        total_enrolled_users = len(self.rows)
+        
         for row in self.rows:
             # Get Start Date for filtering
             start_date_str = row[self.COL_START_DATE] if self.COL_START_DATE < len(row) else ""
             date_obj = parse_start_date(start_date_str)
             
-            # Apply Date Filter if configured
+            # Apply Date Filter if configured (for processing, but total_users remains all enrolled)
             if start_date_filter and end_date_filter:
                 if not date_obj:
                     # Skip rows with no start date if filtering is active
@@ -277,7 +273,7 @@ class AISmarthProcessor:
                 if not (start_date_filter <= date_obj <= end_date_filter):
                     continue # Skip rows outside range
             
-            # Count Row as valid
+            # Count Row as valid (for filtered processing)
             filtered_rows_count += 1
             
             videos_completed, quizzes_completed = self.count_completions(row)
@@ -294,8 +290,9 @@ class AISmarthProcessor:
                 'has_started': self.has_started(row)
             })
 
-            # Check if user has started
-            if self.has_started(row):
+            # Check if user has started (based on Start Date column)
+            # Count users where Start Date has a valid date value (not "Not Started" or empty)
+            if date_obj is not None:
                 completion_stats['started'] += 1
             
             # Check if completed exactly one video
@@ -312,39 +309,73 @@ class AISmarthProcessor:
             if progress_pct == 100:
                 completion_stats['100_percent'] += 1
 
-        # Set total users to filtered count
-        completion_stats['total_users'] = filtered_rows_count
+        # Set total users to all enrolled users (total rows in CSV, regardless of date filter)
+        completion_stats['total_users'] = total_enrolled_users
 
-        # Calculate month-wise "At Least 1 Video" metrics
-        # Define month end dates (assuming 2025)
-        oct_end = (10, 2025)  # October 2025
-        nov_end = (11, 2025)  # November 2025
-        dec_end = (12, 2025)  # December 2025
+        # Calculate month-wise "At Least 1 Video" metrics dynamically
+        # First, detect all unique year-month combinations present in the data
+        year_month_pairs = set()
+        years_in_data = []
+        for user in user_data:
+            if user['date_info']:
+                year_month_pairs.add((user['date_info'].year, user['date_info'].month))
+                years_in_data.append(user['date_info'].year)
         
+        if not year_month_pairs:
+            # No date data available
+            return completion_stats
+        
+        # Sort year-month pairs chronologically (by year, then by month)
+        sorted_year_months = sorted(year_month_pairs)
+        
+        # Get year range
+        if years_in_data:
+            min_year = min(years_in_data)
+            max_year = max(years_in_data)
+        else:
+            min_year = max_year = 2025
+        
+        # Month names for dynamic column creation
+        month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                      'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+        
+        # Initialize month-wise stats dynamically with year-month keys
+        for year, month_num in sorted_year_months:
+            month_name = month_names[month_num - 1]
+            # Include year in column name to handle multiple years
+            completion_stats[f'at_least_1_video_cumulative_{year}_{month_name}'] = 0
+            completion_stats[f'at_least_1_video_monthly_{year}_{month_name}'] = 0
+        
+        # Calculate month end dates for cumulative counts (for each year present)
+        from datetime import timedelta
+        from calendar import monthrange
+        
+        # Process users for month-wise metrics
         for user in user_data:
             if user['videos_completed'] >= 1 and user['date_info']:
-                month = user['date_info'].month
-                year = user['date_info'].year
+                user_start_date = user['date_info']
+                user_month = user_start_date.month
+                user_year = user_start_date.year
+                month_name = month_names[user_month - 1]
                 
-                # Cumulative counts: users from start to end of each month
-                # Compare dates: (year, month) <= (end_year, end_month)
-                # This includes all users who started on or before the end of that month
-                if (year < oct_end[1]) or (year == oct_end[1] and month <= oct_end[0]):
-                    completion_stats['at_least_1_video_cumulative_oct'] += 1
-                
-                if (year < nov_end[1]) or (year == nov_end[1] and month <= nov_end[0]):
-                    completion_stats['at_least_1_video_cumulative_nov'] += 1
-                
-                if (year < dec_end[1]) or (year == dec_end[1] and month <= dec_end[0]):
-                    completion_stats['at_least_1_video_cumulative_dec'] += 1
+                # Cumulative counts: users who started on or before the end of each month
+                # AND have completed at least 1 video
+                for cum_year, cum_month_num in sorted_year_months:
+                    cum_month_name = month_names[cum_month_num - 1]
+                    cum_key = f'at_least_1_video_cumulative_{cum_year}_{cum_month_name}'
+                    
+                    # Get the last day of the month for the year we're checking
+                    last_day = monthrange(cum_year, cum_month_num)[1]
+                    month_end = datetime(cum_year, cum_month_num, last_day).date()
+                    
+                    # Count user if they started on or before the end of this month
+                    if user_start_date <= month_end:
+                        completion_stats[cum_key] += 1
                 
                 # Monthly counts: users who started in that specific month only
-                if month == 10 and year == 2025:
-                    completion_stats['at_least_1_video_monthly_oct'] += 1
-                elif month == 11 and year == 2025:
-                    completion_stats['at_least_1_video_monthly_nov'] += 1
-                elif month == 12 and year == 2025:
-                    completion_stats['at_least_1_video_monthly_dec'] += 1
+                monthly_key = f'at_least_1_video_monthly_{user_year}_{month_name}'
+                if monthly_key in completion_stats:
+                    completion_stats[monthly_key] += 1
 
         # Write to new CSV
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
@@ -468,107 +499,156 @@ def _add_monthwise_sheets(wb, all_stats_sorted):
         bottom=Side(style='thin')
     )
     
+    # Month names for dynamic column detection
+    import re
+    month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                  'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    month_display_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December']
+    
+    # Detect all cumulative month columns present in the data (format: at_least_1_video_cumulative_YYYY_month)
+    cum_month_cols = []
+    cum_display_info = []  # List of (col_name, year, month_num, display_name)
+    if all_stats_sorted:
+        for col in all_stats_sorted[0].keys():
+            match = re.match(r'at_least_1_video_cumulative_(\d+)_(\w+)', col)
+            if match:
+                year = int(match.group(1))
+                month_abbr = match.group(2)
+                if month_abbr in month_names:
+                    month_idx = month_names.index(month_abbr)
+                    month_num = month_idx + 1
+                    display_name = f'Up to {month_display_names[month_idx]} {year} End'
+                    cum_month_cols.append(col)
+                    cum_display_info.append((col, year, month_num, display_name))
+        
+        # Sort by year, then by month
+        cum_display_info.sort(key=lambda x: (x[1], x[2]))
+        cum_month_cols = [info[0] for info in cum_display_info]
+        cum_display_names = [info[3] for info in cum_display_info]
+    
+    # Detect all monthly month columns present in the data (format: at_least_1_video_monthly_YYYY_month)
+    mon_month_cols = []
+    mon_display_info = []  # List of (col_name, year, month_num, display_name)
+    if all_stats_sorted:
+        for col in all_stats_sorted[0].keys():
+            match = re.match(r'at_least_1_video_monthly_(\d+)_(\w+)', col)
+            if match:
+                year = int(match.group(1))
+                month_abbr = match.group(2)
+                if month_abbr in month_names:
+                    month_idx = month_names.index(month_abbr)
+                    month_num = month_idx + 1
+                    display_name = f'{month_display_names[month_idx]} {year} Only'
+                    mon_month_cols.append(col)
+                    mon_display_info.append((col, year, month_num, display_name))
+        
+        # Sort by year, then by month
+        mon_display_info.sort(key=lambda x: (x[1], x[2]))
+        mon_month_cols = [info[0] for info in mon_display_info]
+        mon_display_names = [info[3] for info in mon_display_info]
+    
     # Sheet 1: Cumulative "At Least 1 Video" (Start to Month End)
-    ws_cumulative = wb.create_sheet("At Least 1 Video - Cumulative")
-    
-    headers_cumulative = ['Course Language', 'Up to Oct End', 'Up to Nov End', 'Up to Dec End']
-    ws_cumulative.append(headers_cumulative)
-    
-    # Style header row
-    for cell in ws_cumulative[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-        cell.border = border
-    
-    # Add data rows
-    for stats in all_stats_sorted:
-        ws_cumulative.append([
-            stats['language'],
-            stats.get('at_least_1_video_cumulative_oct', 0),
-            stats.get('at_least_1_video_cumulative_nov', 0),
-            stats.get('at_least_1_video_cumulative_dec', 0)
-        ])
-    
-    # Add totals row
-    total_row_cumulative = ['OVERALL TOTALS']
-    for col_idx in range(2, 5):  # Columns B to D
-        col_letter = openpyxl.utils.get_column_letter(col_idx)
-        start_row = 2
-        end_row = len(all_stats_sorted) + 1
-        total_row_cumulative.append(f"=SUM({col_letter}{start_row}:{col_letter}{end_row})")
-    
-    ws_cumulative.append(total_row_cumulative)
-    total_row_idx_cumulative = len(all_stats_sorted) + 2
-    
-    # Style total row
-    for cell in ws_cumulative[total_row_idx_cumulative]:
-        cell.fill = total_fill
-        cell.font = total_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-        cell.border = border
-    
-    # Style data rows
-    for row_idx in range(2, total_row_idx_cumulative):
-        for cell in ws_cumulative[row_idx]:
-            cell.border = border
+    if cum_month_cols:
+        ws_cumulative = wb.create_sheet("At Least 1 Video - Cumulative")
+        
+        headers_cumulative = ['Course Language'] + cum_display_names
+        ws_cumulative.append(headers_cumulative)
+        
+        # Style header row
+        for cell in ws_cumulative[1]:
+            cell.fill = header_fill
+            cell.font = header_font
             cell.alignment = Alignment(horizontal='left', vertical='center')
-    
-    # Adjust column widths
-    ws_cumulative.column_dimensions['A'].width = 20
-    for col in ['B', 'C', 'D']:
-        ws_cumulative.column_dimensions[col].width = 18
+            cell.border = border
+        
+        # Add data rows
+        for stats in all_stats_sorted:
+            row_data = [stats['language']]
+            for col_name in cum_month_cols:
+                row_data.append(stats.get(col_name, 0))
+            ws_cumulative.append(row_data)
+        
+        # Add totals row
+        total_row_cumulative = ['OVERALL TOTALS']
+        for col_idx in range(2, len(cum_month_cols) + 2):
+            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            start_row = 2
+            end_row = len(all_stats_sorted) + 1
+            total_row_cumulative.append(f"=SUM({col_letter}{start_row}:{col_letter}{end_row})")
+        
+        ws_cumulative.append(total_row_cumulative)
+        total_row_idx_cumulative = len(all_stats_sorted) + 2
+        
+        # Style total row
+        for cell in ws_cumulative[total_row_idx_cumulative]:
+            cell.fill = total_fill
+            cell.font = total_font
+            cell.alignment = Alignment(horizontal='left', vertical='center')
+            cell.border = border
+        
+        # Style data rows
+        for row_idx in range(2, total_row_idx_cumulative):
+            for cell in ws_cumulative[row_idx]:
+                cell.border = border
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+        
+        # Adjust column widths
+        ws_cumulative.column_dimensions['A'].width = 20
+        for col_idx in range(2, len(cum_month_cols) + 2):
+            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            ws_cumulative.column_dimensions[col_letter].width = 18
     
     # Sheet 2: Monthly "At Least 1 Video" (Month Only)
-    ws_monthly = wb.create_sheet("At Least 1 Video - Monthly")
-    
-    headers_monthly = ['Course Language', 'October Only', 'November Only', 'December Only']
-    ws_monthly.append(headers_monthly)
-    
-    # Style header row
-    for cell in ws_monthly[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-        cell.border = border
-    
-    # Add data rows
-    for stats in all_stats_sorted:
-        ws_monthly.append([
-            stats['language'],
-            stats.get('at_least_1_video_monthly_oct', 0),
-            stats.get('at_least_1_video_monthly_nov', 0),
-            stats.get('at_least_1_video_monthly_dec', 0)
-        ])
-    
-    # Add totals row
-    total_row_monthly = ['OVERALL TOTALS']
-    for col_idx in range(2, 5):  # Columns B to D
-        col_letter = openpyxl.utils.get_column_letter(col_idx)
-        start_row = 2
-        end_row = len(all_stats_sorted) + 1
-        total_row_monthly.append(f"=SUM({col_letter}{start_row}:{col_letter}{end_row})")
-    
-    ws_monthly.append(total_row_monthly)
-    total_row_idx_monthly = len(all_stats_sorted) + 2
-    
-    # Style total row
-    for cell in ws_monthly[total_row_idx_monthly]:
-        cell.fill = total_fill
-        cell.font = total_font
-        cell.alignment = Alignment(horizontal='left', vertical='center')
-        cell.border = border
-    
-    # Style data rows
-    for row_idx in range(2, total_row_idx_monthly):
-        for cell in ws_monthly[row_idx]:
-            cell.border = border
+    if mon_month_cols:
+        ws_monthly = wb.create_sheet("At Least 1 Video - Monthly")
+        
+        headers_monthly = ['Course Language'] + mon_display_names
+        ws_monthly.append(headers_monthly)
+        
+        # Style header row
+        for cell in ws_monthly[1]:
+            cell.fill = header_fill
+            cell.font = header_font
             cell.alignment = Alignment(horizontal='left', vertical='center')
-    
-    # Adjust column widths
-    ws_monthly.column_dimensions['A'].width = 20
-    for col in ['B', 'C', 'D']:
-        ws_monthly.column_dimensions[col].width = 18
+            cell.border = border
+        
+        # Add data rows
+        for stats in all_stats_sorted:
+            row_data = [stats['language']]
+            for col_name in mon_month_cols:
+                row_data.append(stats.get(col_name, 0))
+            ws_monthly.append(row_data)
+        
+        # Add totals row
+        total_row_monthly = ['OVERALL TOTALS']
+        for col_idx in range(2, len(mon_month_cols) + 2):
+            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            start_row = 2
+            end_row = len(all_stats_sorted) + 1
+            total_row_monthly.append(f"=SUM({col_letter}{start_row}:{col_letter}{end_row})")
+        
+        ws_monthly.append(total_row_monthly)
+        total_row_idx_monthly = len(all_stats_sorted) + 2
+        
+        # Style total row
+        for cell in ws_monthly[total_row_idx_monthly]:
+            cell.fill = total_fill
+            cell.font = total_font
+            cell.alignment = Alignment(horizontal='left', vertical='center')
+            cell.border = border
+        
+        # Style data rows
+        for row_idx in range(2, total_row_idx_monthly):
+            for cell in ws_monthly[row_idx]:
+                cell.border = border
+                cell.alignment = Alignment(horizontal='left', vertical='center')
+        
+        # Adjust column widths
+        ws_monthly.column_dimensions['A'].width = 20
+        for col_idx in range(2, len(mon_month_cols) + 2):
+            col_letter = openpyxl.utils.get_column_letter(col_idx)
+            ws_monthly.column_dimensions[col_letter].width = 18
 
 
 def find_aisamarth_files(source_path: Path) -> List[str]:
