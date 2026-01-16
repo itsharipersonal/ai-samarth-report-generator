@@ -382,6 +382,14 @@ class AISmarthProcessor:
                 if monthly_key in completion_stats:
                     completion_stats[monthly_key] += 1
 
+        # Store user data summary for post-processing (to handle missing month columns)
+        # Store list of (start_date, videos_completed) for users with completions
+        completion_stats['_user_data_summary'] = [
+            (user['date_info'], user['videos_completed']) 
+            for user in user_data 
+            if user['videos_completed'] >= 1 and user['date_info']
+        ]
+
         # Write to new CSV
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
@@ -404,6 +412,75 @@ class AISmarthProcessor:
         print(f"75% Completion: {stats['75_percent']} users ({stats['75_percent'] / stats['total_users'] * 100:.1f}%)")
         print(
             f"100% Completion: {stats['100_percent']} users ({stats['100_percent'] / stats['total_users'] * 100:.1f}%)")
+
+
+def normalize_month_columns(all_stats: List[Dict]):
+    """
+    Ensure all stats dictionaries have columns for all year-months found across all files.
+    This fixes the issue where a file doesn't have a column for a month that exists in other files.
+    Recalculates cumulative values using stored user data.
+    """
+    import re
+    from calendar import monthrange
+    
+    month_names = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                  'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    
+    # Collect all unique year-month pairs from all stats
+    all_year_months = set()
+    for stats in all_stats:
+        for col in stats.keys():
+            # Check cumulative columns
+            match = re.match(r'at_least_1_video_cumulative_(\d+)_(\w+)', col)
+            if match:
+                year = int(match.group(1))
+                month_abbr = match.group(2)
+                if month_abbr in month_names:
+                    all_year_months.add((year, month_names.index(month_abbr) + 1))
+    
+    if not all_year_months:
+        return
+    
+    # For each stats dict, add missing columns and recalculate cumulative values
+    for stats in all_stats:
+        # Get user data summary if available
+        user_data_summary = stats.get('_user_data_summary', [])
+        
+        # For each year-month (including missing ones), calculate cumulative value
+        for year, month_num in sorted(all_year_months):
+            month_name = month_names[month_num - 1]
+            cum_key = f'at_least_1_video_cumulative_{year}_{month_name}'
+            mon_key = f'at_least_1_video_monthly_{year}_{month_name}'
+            
+            # Initialize if missing
+            if cum_key not in stats:
+                stats[cum_key] = 0
+            if mon_key not in stats:
+                stats[mon_key] = 0
+            
+            # Recalculate cumulative using user data
+            if user_data_summary:
+                # Get the last day of the month
+                last_day = monthrange(year, month_num)[1]
+                month_end = datetime(year, month_num, last_day).date()
+                
+                # Count users who started on or before the end of this month
+                cumulative_count = sum(
+                    1 for start_date, videos_completed in user_data_summary
+                    if start_date and start_date <= month_end
+                )
+                stats[cum_key] = cumulative_count
+                
+                # Calculate monthly count (users who started in this specific month)
+                monthly_count = sum(
+                    1 for start_date, videos_completed in user_data_summary
+                    if start_date and start_date.year == year and start_date.month == month_num
+                )
+                stats[mon_key] = monthly_count
+        
+        # Remove the temporary user data summary (cleanup)
+        if '_user_data_summary' in stats:
+            del stats['_user_data_summary']
 
 
 def create_summary_excel(all_stats: List[Dict], output_path: str):
@@ -813,6 +890,9 @@ def main():
 
     # Create summary Excel
     if all_stats:
+        # Normalize month columns across all files
+        normalize_month_columns(all_stats)
+        
         print("\n" + "=" * 100)
         print("CREATING SUMMARY EXCEL")
         print("=" * 100)

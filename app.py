@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 import zipfile
 from io import BytesIO
-from report_code import AISmarthProcessor, create_summary_excel, validate_language_files, parse_start_date
+from report_code import AISmarthProcessor, create_summary_excel, validate_language_files, parse_start_date, normalize_month_columns
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -150,6 +150,9 @@ def main():
                                 all_stats.append(stats)
                                 processed_files.append(output_csv_path)
 
+                        # Normalize month columns across all files
+                        normalize_month_columns(all_stats)
+                        
                         # Create Summary Excel
                         summary_excel_path = output_dir / "AI_Samarth_Summary.xlsx"
                         create_summary_excel(all_stats, str(summary_excel_path))
