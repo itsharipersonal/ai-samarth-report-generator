@@ -246,6 +246,7 @@ class AISmarthProcessor:
         completion_stats = {
             'total_users': 0, # Will be set after filtering
             'started': 0,
+            'started_with_completion': 0,  # Users who completed at least 1 video/quiz
             'only_1_video': 0,
             '25_percent': 0,
             '50_percent': 0,
@@ -294,6 +295,10 @@ class AISmarthProcessor:
             # Count users where Start Date has a valid date value (not "Not Started" or empty)
             if date_obj is not None:
                 completion_stats['started'] += 1
+            
+            # Check if user has actually completed at least 1 video or quiz
+            if self.has_started(row):
+                completion_stats['started_with_completion'] += 1
             
             # Check if completed exactly one video
             if videos_completed == 1:
@@ -392,6 +397,7 @@ class AISmarthProcessor:
         print(f"{'=' * 80}")
         print(f"Total Users: {stats['total_users']}")
         print(f"Started: {stats['started']} users ({stats['started'] / stats['total_users'] * 100:.1f}%)")
+        print(f"Started (Completed ≥1 Video/Quiz): {stats['started_with_completion']} users ({stats['started_with_completion'] / stats['total_users'] * 100:.1f}%)")
         print(f"Only 1 Video: {stats['only_1_video']} users ({stats['only_1_video'] / stats['total_users'] * 100:.1f}%)")
         print(f"25% Completion: {stats['25_percent']} users ({stats['25_percent'] / stats['total_users'] * 100:.1f}%)")
         print(f"50% Completion: {stats['50_percent']} users ({stats['50_percent'] / stats['total_users'] * 100:.1f}%)")
@@ -423,7 +429,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
     )
 
     # Headers - Changed "File Name" to "Course Language"
-    headers = ['Course Language', 'Total Users', 'Started', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
+    headers = ['Course Language', 'Total Users', 'Started', 'Started (Completed ≥1 Video/Quiz)', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
                '100% Completion']
     ws.append(headers)
 
@@ -440,6 +446,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
             stats['language'],
             stats['total_users'],
             stats['started'],
+            stats.get('started_with_completion', 0),
             stats['only_1_video'],
             stats['25_percent'],
             stats['50_percent'],
@@ -449,7 +456,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
     # Calculate totals
     total_row = ['OVERALL TOTALS']
-    for col_idx in range(2, 9):  # Columns B to H (Total Users to 100% Completion)
+    for col_idx in range(2, 10):  # Columns B to I (Total Users to 100% Completion)
         col_letter = openpyxl.utils.get_column_letter(col_idx)
         start_row = 2
         end_row = len(all_stats_sorted) + 1
@@ -473,7 +480,8 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
     # Adjust column widths
     ws.column_dimensions['A'].width = 20
-    for col in ['B', 'C', 'D', 'E', 'F', 'G', 'H']:
+    ws.column_dimensions['D'].width = 35  # Wider for "Started (Completed ≥1 Video/Quiz)"
+    for col in ['B', 'C', 'E', 'F', 'G', 'H', 'I']:
         ws.column_dimensions[col].width = 18
 
     # Add month-wise analysis sheets
@@ -819,6 +827,7 @@ def main():
 
         total_users = sum(s['total_users'] for s in all_stats)
         total_started = sum(s['started'] for s in all_stats)
+        total_started_with_completion = sum(s.get('started_with_completion', 0) for s in all_stats)
         total_only_1 = sum(s['only_1_video'] for s in all_stats)
         total_25 = sum(s['25_percent'] for s in all_stats)
         total_50 = sum(s['50_percent'] for s in all_stats)
@@ -827,6 +836,7 @@ def main():
 
         print(f"\nTotal Users Across All Files: {total_users}")
         print(f"Started: {total_started} users ({total_started / total_users * 100:.1f}%)")
+        print(f"Started (Completed ≥1 Video/Quiz): {total_started_with_completion} users ({total_started_with_completion / total_users * 100:.1f}%)")
         print(f"Only 1 Video: {total_only_1} users ({total_only_1 / total_users * 100:.1f}%)")
         print(f"25% Completion: {total_25} users ({total_25 / total_users * 100:.1f}%)")
         print(f"50% Completion: {total_50} users ({total_50 / total_users * 100:.1f}%)")
