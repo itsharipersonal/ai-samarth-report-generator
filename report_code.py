@@ -253,6 +253,15 @@ class AISmarthProcessor:
             '75_percent': 0,
             '100_percent': 0
         }
+        
+        # Track email/name lists for each completion level (exclusive)
+        COL_NAME = 3  # Name column (0-indexed)
+        COL_EMAIL = 4  # Email column (0-indexed)
+        email_lists = {
+            '25_percent': [],  # List of (email, name) tuples
+            '50_percent': [],
+            '75_percent': []
+        }
 
         # Track users with their start dates and completion status
         user_data = []
@@ -304,7 +313,7 @@ class AISmarthProcessor:
             if videos_completed == 1:
                 completion_stats['only_1_video'] += 1
 
-            # Update stats
+            # Update stats (using >= for backward compatibility)
             if progress_pct >= 25:
                 completion_stats['25_percent'] += 1
             if progress_pct >= 50:
@@ -313,6 +322,18 @@ class AISmarthProcessor:
                 completion_stats['75_percent'] += 1
             if progress_pct == 100:
                 completion_stats['100_percent'] += 1
+            
+            # Track email/name for completion levels (matching stats logic: >= 25%, >= 50%, >= 75%)
+            email = row[COL_EMAIL] if COL_EMAIL < len(row) else ""
+            name = row[COL_NAME] if COL_NAME < len(row) else ""
+            
+            if email:  # Only add if email exists
+                if progress_pct >= 25:
+                    email_lists['25_percent'].append((email, name))
+                if progress_pct >= 50:
+                    email_lists['50_percent'].append((email, name))
+                if progress_pct >= 75:
+                    email_lists['75_percent'].append((email, name))
 
         # Set total users to all enrolled users (total rows in CSV, regardless of date filter)
         completion_stats['total_users'] = total_enrolled_users
@@ -412,6 +433,9 @@ class AISmarthProcessor:
             for user in user_data 
             if user['videos_completed'] >= 1 and user['date_info']
         ]
+        
+        # Store email lists in completion_stats for app.py to use
+        completion_stats['_email_lists'] = email_lists
 
         # Write to new CSV
         with open(output_path, 'w', newline='', encoding='utf-8') as f:

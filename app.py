@@ -5,8 +5,26 @@ import csv
 import shutil
 from pathlib import Path
 import zipfile
-from io import BytesIO
+from io import BytesIO, StringIO
 from report_code import AISmarthProcessor, create_summary_excel, validate_language_files, parse_start_date, normalize_month_columns
+
+def generate_email_csv(email_list: list) -> str:
+    """
+    Generate CSV content from email list.
+    email_list: List of (email, name, language) tuples
+    Returns: CSV content as string
+    """
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow(['Email', 'Name', 'Language'])
+    
+    # Write data rows
+    for email, name, language in email_list:
+        writer.writerow([email, name, language])
+    
+    return output.getvalue()
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -136,6 +154,13 @@ def main():
                     with st.spinner("Processing data..."):
                         all_stats = []
                         processed_files = []
+                        
+                        # Aggregate email lists across all languages
+                        aggregated_emails = {
+                            '25_percent': [],  # List of (email, name, language) tuples
+                            '50_percent': [],
+                            '75_percent': []
+                        }
 
                         for file_path in file_paths:
                             processor = AISmarthProcessor(file_path)
@@ -145,10 +170,21 @@ def main():
                             stats = processor.process_and_add_columns(str(output_csv_path), start_date, end_date)
                             
                             if stats:
-                                stats['language'] = processor.extract_language()
+                                language = processor.extract_language()
+                                stats['language'] = language
                                 stats['filename'] = os.path.basename(file_path)
                                 all_stats.append(stats)
                                 processed_files.append(output_csv_path)
+                                
+                                # Collect email lists from this file
+                                email_lists = stats.get('_email_lists', {})
+                                for level in ['25_percent', '50_percent', '75_percent']:
+                                    for email, name in email_lists.get(level, []):
+                                        aggregated_emails[level].append((email, name, language))
+                                
+                                # Clean up temporary email lists from stats
+                                if '_email_lists' in stats:
+                                    del stats['_email_lists']
 
                         # Normalize month columns across all files
                         normalize_month_columns(all_stats)
@@ -215,6 +251,40 @@ def main():
                         df_display = pd.concat([df_display, total_row], ignore_index=True)
                         
                         st.dataframe(df_display, use_container_width=True)
+                        
+                        # Email download buttons
+                        st.write("### Download Email Lists")
+                        email_col1, email_col2, email_col3 = st.columns(3)
+                        
+                        with email_col1:
+                            csv_25 = generate_email_csv(aggregated_emails['25_percent'])
+                            st.download_button(
+                                label="📧 Download 25% Complete Emails",
+                                data=csv_25,
+                                file_name="25_percent_complete_emails.csv",
+                                mime="text/csv"
+                            )
+                            st.caption(f"{len(aggregated_emails['25_percent'])} users")
+                        
+                        with email_col2:
+                            csv_50 = generate_email_csv(aggregated_emails['50_percent'])
+                            st.download_button(
+                                label="📧 Download 50% Complete Emails",
+                                data=csv_50,
+                                file_name="50_percent_complete_emails.csv",
+                                mime="text/csv"
+                            )
+                            st.caption(f"{len(aggregated_emails['50_percent'])} users")
+                        
+                        with email_col3:
+                            csv_75 = generate_email_csv(aggregated_emails['75_percent'])
+                            st.download_button(
+                                label="📧 Download 75% Complete Emails",
+                                data=csv_75,
+                                file_name="75_percent_complete_emails.csv",
+                                mime="text/csv"
+                            )
+                            st.caption(f"{len(aggregated_emails['75_percent'])} users")
                         
                         # Month-wise "At Least 1 Video" Analysis
                         st.write("### Month-wise 'At Least 1 Video' Analysis")
