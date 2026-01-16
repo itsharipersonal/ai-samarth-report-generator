@@ -270,8 +270,29 @@ def main():
                         mon_month_cols = [info[0] for info in mon_display_info]
                         mon_display_names = [info[3] for info in mon_display_info]
                         
-                        # Create tabs for cumulative and monthly views
-                        tab1, tab2 = st.tabs(["📈 Cumulative (Start to Month End)", "📅 Monthly (Month Only)"])
+                        # Find all exactly 1 video cumulative month columns
+                        exactly_cum_month_cols = []
+                        exactly_cum_display_info = []  # List of (col_name, year, month_num, display_name)
+                        
+                        for col in df_all.columns:
+                            match = re.match(r'exactly_1_video_cumulative_(\d+)_(\w+)', col)
+                            if match:
+                                year = int(match.group(1))
+                                month_abbr = match.group(2)
+                                if month_abbr in month_names:
+                                    month_idx = month_names.index(month_abbr)
+                                    month_num = month_idx + 1
+                                    display_name = f'Up to {month_display_names[month_idx]} {year} End'
+                                    exactly_cum_month_cols.append(col)
+                                    exactly_cum_display_info.append((col, year, month_num, display_name))
+                        
+                        # Sort by year, then by month
+                        exactly_cum_display_info.sort(key=lambda x: (x[1], x[2]))
+                        exactly_cum_month_cols = [info[0] for info in exactly_cum_display_info]
+                        exactly_cum_display_names = [info[3] for info in exactly_cum_display_info]
+                        
+                        # Create tabs for cumulative, monthly, and exactly 1 video views
+                        tab1, tab2, tab3 = st.tabs(["📈 Cumulative (Start to Month End)", "📅 Monthly (Month Only)", "🎯 Exactly 1 Video (Cumulative)"])
                         
                         with tab1:
                             st.write("**Cumulative Data:** Users who completed **at least 1 video** from program start to end of each month")
@@ -310,6 +331,25 @@ def main():
                                 st.dataframe(df_mon_display, use_container_width=True)
                             else:
                                 st.info("Month-wise monthly data not available in this dataset.")
+                        
+                        with tab3:
+                            st.write("**Cumulative Data:** Users who completed **exactly 1 video** (not more, not less) from program start to end of each month")
+                            
+                            if exactly_cum_month_cols:
+                                exactly_cum_cols = ['language'] + exactly_cum_month_cols
+                                df_exactly_cum_display = df_all[exactly_cum_cols].copy()
+                                
+                                # Rename columns for better display
+                                df_exactly_cum_display.columns = ['Course Language'] + exactly_cum_display_names
+                                
+                                # Add Total Row
+                                exactly_cum_totals = df_exactly_cum_display[exactly_cum_display_names].sum()
+                                exactly_cum_total_row = pd.DataFrame([['TOTAL'] + exactly_cum_totals.tolist()], columns=['Course Language'] + exactly_cum_display_names)
+                                df_exactly_cum_display = pd.concat([df_exactly_cum_display, exactly_cum_total_row], ignore_index=True)
+                                
+                                st.dataframe(df_exactly_cum_display, use_container_width=True)
+                            else:
+                                st.info("Exactly 1 video cumulative data not available in this dataset.")
 
             # Cleanup
             # Note: In a real production app, you'd want to handle cleanup more carefully

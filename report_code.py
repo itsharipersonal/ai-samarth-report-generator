@@ -350,6 +350,7 @@ class AISmarthProcessor:
             # Include year in column name to handle multiple years
             completion_stats[f'at_least_1_video_cumulative_{year}_{month_name}'] = 0
             completion_stats[f'at_least_1_video_monthly_{year}_{month_name}'] = 0
+            completion_stats[f'exactly_1_video_cumulative_{year}_{month_name}'] = 0
         
         # Calculate month end dates for cumulative counts (for each year present)
         from datetime import timedelta
@@ -381,6 +382,28 @@ class AISmarthProcessor:
                 monthly_key = f'at_least_1_video_monthly_{user_year}_{month_name}'
                 if monthly_key in completion_stats:
                     completion_stats[monthly_key] += 1
+        
+        # Process users for "exactly 1 video" month-wise metrics
+        for user in user_data:
+            if user['videos_completed'] == 1 and user['date_info']:
+                user_start_date = user['date_info']
+                user_month = user_start_date.month
+                user_year = user_start_date.year
+                month_name = month_names[user_month - 1]
+                
+                # Cumulative counts: users who completed exactly 1 video
+                # AND started on or before the end of each month
+                for cum_year, cum_month_num in sorted_year_months:
+                    cum_month_name = month_names[cum_month_num - 1]
+                    cum_key = f'exactly_1_video_cumulative_{cum_year}_{cum_month_name}'
+                    
+                    # Get the last day of the month for the year we're checking
+                    last_day = monthrange(cum_year, cum_month_num)[1]
+                    month_end = datetime(cum_year, cum_month_num, last_day).date()
+                    
+                    # Count user if they started on or before the end of this month
+                    if user_start_date <= month_end:
+                        completion_stats[cum_key] += 1
 
         # Store user data summary for post-processing (to handle missing month columns)
         # Store list of (start_date, videos_completed) for users with completions
@@ -430,11 +453,11 @@ def normalize_month_columns(all_stats: List[Dict]):
     all_year_months = set()
     for stats in all_stats:
         for col in stats.keys():
-            # Check cumulative columns
-            match = re.match(r'at_least_1_video_cumulative_(\d+)_(\w+)', col)
+            # Check cumulative columns (both at_least_1_video and exactly_1_video)
+            match = re.match(r'(at_least_1_video|exactly_1_video)_cumulative_(\d+)_(\w+)', col)
             if match:
-                year = int(match.group(1))
-                month_abbr = match.group(2)
+                year = int(match.group(2))
+                month_abbr = match.group(3)
                 if month_abbr in month_names:
                     all_year_months.add((year, month_names.index(month_abbr) + 1))
     
@@ -451,12 +474,15 @@ def normalize_month_columns(all_stats: List[Dict]):
             month_name = month_names[month_num - 1]
             cum_key = f'at_least_1_video_cumulative_{year}_{month_name}'
             mon_key = f'at_least_1_video_monthly_{year}_{month_name}'
+            exactly_cum_key = f'exactly_1_video_cumulative_{year}_{month_name}'
             
             # Initialize if missing
             if cum_key not in stats:
                 stats[cum_key] = 0
             if mon_key not in stats:
                 stats[mon_key] = 0
+            if exactly_cum_key not in stats:
+                stats[exactly_cum_key] = 0
             
             # Recalculate cumulative using user data
             if user_data_summary:
@@ -464,12 +490,19 @@ def normalize_month_columns(all_stats: List[Dict]):
                 last_day = monthrange(year, month_num)[1]
                 month_end = datetime(year, month_num, last_day).date()
                 
-                # Count users who started on or before the end of this month
+                # Count users who started on or before the end of this month (at least 1 video)
                 cumulative_count = sum(
                     1 for start_date, videos_completed in user_data_summary
                     if start_date and start_date <= month_end
                 )
                 stats[cum_key] = cumulative_count
+                
+                # Count users who started on or before the end of this month (exactly 1 video)
+                exactly_cumulative_count = sum(
+                    1 for start_date, videos_completed in user_data_summary
+                    if start_date and start_date <= month_end and videos_completed == 1
+                )
+                stats[exactly_cum_key] = exactly_cumulative_count
                 
                 # Calculate monthly count (users who started in this specific month)
                 monthly_count = sum(
