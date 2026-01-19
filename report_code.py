@@ -206,11 +206,6 @@ class AISmarthProcessor:
             if idx < len(row) and self.is_completed(row[idx]):
                 return True
 
-        # Check quizzes
-        for idx in self.quiz_indices:
-            if idx < len(row) and self.is_completed(row[idx]):
-                return True
-
         return False
 
     def calculate_progress_percentage(self, videos_completed: int, quizzes_completed: int) -> int:
@@ -274,7 +269,7 @@ class AISmarthProcessor:
         completion_stats = {
             'total_users': 0, # Will be set after filtering
             'started': 0,
-            'started_with_completion': 0,  # Users who completed at least 1 video/quiz
+            'started_with_completion': 0,  # Users who completed at least 1 video
             'only_in_progress': 0,  # Users who have only in-progress episodes (no completed)
             'only_1_video': 0,
             '25_percent': 0,
@@ -485,7 +480,7 @@ class AISmarthProcessor:
         print(f"{'=' * 80}")
         print(f"Total Users: {stats['total_users']}")
         print(f"Started: {stats['started']} users ({stats['started'] / stats['total_users'] * 100:.1f}%)")
-        print(f"Started (Completed ≥1 Video/Quiz): {stats['started_with_completion']} users ({stats['started_with_completion'] / stats['total_users'] * 100:.1f}%)")
+        print(f"Started (Completed ≥1 Video): {stats['started_with_completion']} users ({stats['started_with_completion'] / stats['total_users'] * 100:.1f}%)")
         print(f"Only In Progress: {stats.get('only_in_progress', 0)} users ({stats.get('only_in_progress', 0) / stats['total_users'] * 100:.1f}%)")
         print(f"Only 1 Video: {stats['only_1_video']} users ({stats['only_1_video'] / stats['total_users'] * 100:.1f}%)")
         print(f"25% Completion: {stats['25_percent']} users ({stats['25_percent'] / stats['total_users'] * 100:.1f}%)")
@@ -597,7 +592,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
     )
 
     # Headers - Changed "File Name" to "Course Language"
-    headers = ['Course Language', 'Total Users', 'Started', 'Started (Completed ≥1 Video/Quiz)', 'Only In Progress', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
+    headers = ['Course Language', 'Total Users', 'Started', 'Started (Completed ≥1 Video)', 'Only In Progress', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
                '100% Completion']
     ws.append(headers)
 
@@ -649,7 +644,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
     # Adjust column widths
     ws.column_dimensions['A'].width = 20
-    ws.column_dimensions['D'].width = 35  # Wider for "Started (Completed ≥1 Video/Quiz)"
+    ws.column_dimensions['D'].width = 35  # Wider for "Started (Completed ≥1 Video)"
     for col in ['B', 'C', 'E', 'F', 'G', 'H', 'I']:
         ws.column_dimensions[col].width = 18
 
@@ -1009,7 +1004,7 @@ def main():
 
         print(f"\nTotal Users Across All Files: {total_users}")
         print(f"Started: {total_started} users ({total_started / total_users * 100:.1f}%)")
-        print(f"Started (Completed ≥1 Video/Quiz): {total_started_with_completion} users ({total_started_with_completion / total_users * 100:.1f}%)")
+        print(f"Started (Completed ≥1 Video): {total_started_with_completion} users ({total_started_with_completion / total_users * 100:.1f}%)")
         print(f"Only In Progress: {total_only_in_progress} users ({total_only_in_progress / total_users * 100:.1f}%)")
         print(f"Only 1 Video: {total_only_1} users ({total_only_1 / total_users * 100:.1f}%)")
         print(f"25% Completion: {total_25} users ({total_25 / total_users * 100:.1f}%)")
