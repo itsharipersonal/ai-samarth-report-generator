@@ -228,7 +228,7 @@ def main():
                             st.caption(f"📅 Data from **{start_date.strftime('%d %b %Y')}** to **{end_date.strftime('%d %b %Y')}**")
                         df_summary = pd.DataFrame(all_stats)
                         # Reorder columns for display
-                        cols = ['language', 'total_users', 'started', 'started_with_completion', '25_percent', '50_percent', '75_percent', '100_percent']
+                        cols = ['language', 'total_users', 'started', 'started_with_completion', 'only_in_progress', '25_percent', '50_percent', '75_percent', '100_percent']
                         df_display = df_summary[cols].copy()
                         
                         # Rename columns for better readability
@@ -237,6 +237,7 @@ def main():
                             'total_users': 'Total Users',
                             'started': 'Total Users Started',
                             'started_with_completion': 'Started (Completed ≥1 Video/Quiz)',
+                            'only_in_progress': 'Only In Progress',
                             '25_percent': '25% Complete',
                             '50_percent': '50% Complete',
                             '75_percent': '75% Complete',
@@ -245,7 +246,7 @@ def main():
                         df_display = df_display.rename(columns=column_rename_map)
                         
                         # Add Total Row
-                        numeric_cols = ['Total Users', 'Total Users Started', 'Started (Completed ≥1 Video/Quiz)', '25% Complete', '50% Complete', '75% Complete', '100% Complete']
+                        numeric_cols = ['Total Users', 'Total Users Started', 'Started (Completed ≥1 Video/Quiz)', 'Only In Progress', '25% Complete', '50% Complete', '75% Complete', '100% Complete']
                         totals = df_display[numeric_cols].sum()
                         total_row = pd.DataFrame([['TOTAL'] + totals.tolist()], columns=['Course Language'] + numeric_cols)
                         df_display = pd.concat([df_display, total_row], ignore_index=True)

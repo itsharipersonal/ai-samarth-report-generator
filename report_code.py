@@ -154,6 +154,12 @@ class AISmarthProcessor:
             return False
         return 'completed' in cell_value.lower()
 
+    def is_in_progress(self, cell_value: str) -> bool:
+        """Check if a cell indicates in progress"""
+        if not cell_value:
+            return False
+        return 'in progress' in cell_value.lower()
+
     def count_completions(self, row: List[str]) -> Tuple[int, int]:
         """Count completed videos and quizzes for a user"""
         videos_completed = 0
@@ -170,6 +176,28 @@ class AISmarthProcessor:
                 quizzes_completed += 1
 
         return videos_completed, quizzes_completed
+
+    def has_only_in_progress(self, row: List[str]) -> bool:
+        """Check if user has only in-progress episodes (no completed)"""
+        has_in_progress = False
+        has_completed = False
+        
+        # Check all episode columns starting from column 15 (after Progress column)
+        # This includes all videos, quizzes, and other episode types
+        episode_start_col = 15
+        
+        for idx in range(episode_start_col, len(row)):
+            cell_value = row[idx] if idx < len(row) else ""
+            
+            if not cell_value or cell_value.strip() == "":
+                continue
+            
+            if self.is_in_progress(cell_value):
+                has_in_progress = True
+            if self.is_completed(cell_value):
+                has_completed = True
+        
+        return has_in_progress and not has_completed
 
     def has_started(self, row: List[str]) -> bool:
         """Check if user has started (at least one completion)"""
@@ -247,6 +275,7 @@ class AISmarthProcessor:
             'total_users': 0, # Will be set after filtering
             'started': 0,
             'started_with_completion': 0,  # Users who completed at least 1 video/quiz
+            'only_in_progress': 0,  # Users who have only in-progress episodes (no completed)
             'only_1_video': 0,
             '25_percent': 0,
             '50_percent': 0,
@@ -308,6 +337,10 @@ class AISmarthProcessor:
             # Check if user has actually completed at least 1 video or quiz
             if self.has_started(row):
                 completion_stats['started_with_completion'] += 1
+            
+            # Check if user has only in-progress episodes (no completed)
+            if self.has_only_in_progress(row):
+                completion_stats['only_in_progress'] += 1
             
             # Check if completed exactly one video
             if videos_completed == 1:
@@ -453,6 +486,7 @@ class AISmarthProcessor:
         print(f"Total Users: {stats['total_users']}")
         print(f"Started: {stats['started']} users ({stats['started'] / stats['total_users'] * 100:.1f}%)")
         print(f"Started (Completed ≥1 Video/Quiz): {stats['started_with_completion']} users ({stats['started_with_completion'] / stats['total_users'] * 100:.1f}%)")
+        print(f"Only In Progress: {stats.get('only_in_progress', 0)} users ({stats.get('only_in_progress', 0) / stats['total_users'] * 100:.1f}%)")
         print(f"Only 1 Video: {stats['only_1_video']} users ({stats['only_1_video'] / stats['total_users'] * 100:.1f}%)")
         print(f"25% Completion: {stats['25_percent']} users ({stats['25_percent'] / stats['total_users'] * 100:.1f}%)")
         print(f"50% Completion: {stats['50_percent']} users ({stats['50_percent'] / stats['total_users'] * 100:.1f}%)")
@@ -563,7 +597,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
     )
 
     # Headers - Changed "File Name" to "Course Language"
-    headers = ['Course Language', 'Total Users', 'Started', 'Started (Completed ≥1 Video/Quiz)', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
+    headers = ['Course Language', 'Total Users', 'Started', 'Started (Completed ≥1 Video/Quiz)', 'Only In Progress', 'Only 1 Video', '25% Completion', '50% Completion', '75% Completion',
                '100% Completion']
     ws.append(headers)
 
@@ -581,6 +615,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
             stats['total_users'],
             stats['started'],
             stats.get('started_with_completion', 0),
+            stats.get('only_in_progress', 0),
             stats['only_1_video'],
             stats['25_percent'],
             stats['50_percent'],
@@ -590,7 +625,7 @@ def create_summary_excel(all_stats: List[Dict], output_path: str):
 
     # Calculate totals
     total_row = ['OVERALL TOTALS']
-    for col_idx in range(2, 10):  # Columns B to I (Total Users to 100% Completion)
+    for col_idx in range(2, 11):  # Columns B to J (Total Users to 100% Completion)
         col_letter = openpyxl.utils.get_column_letter(col_idx)
         start_row = 2
         end_row = len(all_stats_sorted) + 1
@@ -965,6 +1000,7 @@ def main():
         total_users = sum(s['total_users'] for s in all_stats)
         total_started = sum(s['started'] for s in all_stats)
         total_started_with_completion = sum(s.get('started_with_completion', 0) for s in all_stats)
+        total_only_in_progress = sum(s.get('only_in_progress', 0) for s in all_stats)
         total_only_1 = sum(s['only_1_video'] for s in all_stats)
         total_25 = sum(s['25_percent'] for s in all_stats)
         total_50 = sum(s['50_percent'] for s in all_stats)
@@ -974,6 +1010,7 @@ def main():
         print(f"\nTotal Users Across All Files: {total_users}")
         print(f"Started: {total_started} users ({total_started / total_users * 100:.1f}%)")
         print(f"Started (Completed ≥1 Video/Quiz): {total_started_with_completion} users ({total_started_with_completion / total_users * 100:.1f}%)")
+        print(f"Only In Progress: {total_only_in_progress} users ({total_only_in_progress / total_users * 100:.1f}%)")
         print(f"Only 1 Video: {total_only_1} users ({total_only_1 / total_users * 100:.1f}%)")
         print(f"25% Completion: {total_25} users ({total_25 / total_users * 100:.1f}%)")
         print(f"50% Completion: {total_50} users ({total_50 / total_users * 100:.1f}%)")
